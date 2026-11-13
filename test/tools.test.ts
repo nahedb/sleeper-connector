@@ -52,15 +52,21 @@ describe("tools", () => {
     expect(miss.text).toContain("Alpha (Alice)");
   });
 
-  it("matchups default to current week", async () => {
+  it("matchups default to the current week, not display_week", async () => {
     const { data } = await call(client, "sleeper_get_matchups");
     expect(data.week).toBe(10);
     expect(data.matchups[0].teams[1].starters[1].player).toBe("(empty)");
   });
 
-  it("transactions resolve names", async () => {
+  it("transactions resolve names, including traded picks", async () => {
     const { data } = await call(client, "sleeper_get_transactions");
     expect(data.transactions[0].adds[0]).toEqual({ player: "Wes Wideout (WR, CCC)", team: "Alpha" });
+    expect(data.transactions[1].draft_picks[0]).toEqual({ season: "2027", round: 1, original_owner: "Bob", from: "Bob", to: "Alpha" });
+  });
+
+  it("roster defaults to a co-owned team", async () => {
+    const c = await connect({ defaultLeagueId: LEAGUE_ID, defaultUsername: "carol" });
+    expect((await call(c, "sleeper_get_roster")).data.team).toBe("Bob");
   });
 
   it("available players excludes rostered and teamless players", async () => {
@@ -94,9 +100,22 @@ describe("tools", () => {
   });
 });
 
+describe("SleeperClient guards", () => {
+  it("rejects unsafe IDs before any request is made", () => {
+    const calls: string[] = [];
+    const c = new SleeperClient(mockFetch(calls));
+    expect(() => c.league("1/../user/x")).toThrow();
+    expect(() => c.rosters("1?x=1")).toThrow();
+    expect(() => c.user("a?b")).toThrow();
+    expect(() => c.draft("12#3")).toThrow();
+    expect(calls).toEqual([]);
+  });
+});
+
 describe("validation", () => {
   it("assertId / assertUserRef", () => {
     expect(() => assertId("12a", "x")).toThrow();
+    expect(() => assertId("1/../x", "x")).toThrow();
     expect(() => assertUserRef("a/b")).toThrow();
     expect(assertUserRef("good_name1")).toBe("good_name1");
   });

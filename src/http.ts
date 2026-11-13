@@ -24,7 +24,7 @@ import { realpathSync } from "node:fs";
 import { createServer as createHttpServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { pathToFileURL } from "node:url";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
-import { LEAGUE_ID_RE, USERNAME_RE, loadConfig, type Config } from "./config.js";
+import { LEAGUE_ID_RE, USERNAME_RE, loadConfig, loadDotEnv, type Config } from "./config.js";
 import { SleeperClient } from "./sleeper.js";
 import { createServer } from "./tools.js";
 
@@ -158,6 +158,11 @@ export function startHttpServer(opts: HttpOptions, client = new SleeperClient(),
       }
 
       const body = await readJson(req);
+      // One HTTP request = one MCP message. JSON-RPC batches (dropped from MCP in 2025-06-18) would
+      // let a single request fan out to hundreds of Sleeper calls and dodge the per-IP rate limit.
+      if (Array.isArray(body)) {
+        return send(res, 400, { jsonrpc: "2.0", error: { code: -32600, message: "Batch requests are not supported" }, id: null });
+      }
       // Path segments win over env defaults, so one deployment can serve any league.
       const server = createServer(client, { ...envConfig, ...pathConfig });
       const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true });
@@ -171,6 +176,9 @@ export function startHttpServer(opts: HttpOptions, client = new SleeperClient(),
       if (!res.headersSent) send(res, e?.status ?? 500, { error: e?.status ? e.message : "internal error" });
     }
   });
+  // Don't let slow or idle clients hold sockets open for Node's 5-minute default.
+  httpServer.headersTimeout = 15_000;
+  httpServer.requestTimeout = 30_000;
   httpServer.listen(opts.port, opts.host);
   return httpServer;
 }
@@ -178,6 +186,7 @@ export function startHttpServer(opts: HttpOptions, client = new SleeperClient(),
 // Run when executed directly.
 if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href) {
   try {
+    loadDotEnv();
     const opts = readHttpOptions();
     startHttpServer(opts).on("listening", () => {
       console.error(

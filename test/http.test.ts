@@ -85,6 +85,28 @@ describe("http server - no auth (default)", () => {
     const bad = await fetch(`${base}/mcp`, { method: "POST", headers: { "content-type": "application/json" }, body: "{" });
     expect(bad.status).toBe(400);
   });
+
+  it("413s an oversized body sent without a Content-Length", async () => {
+    const big = new TextEncoder().encode(JSON.stringify({ pad: "x".repeat(1_100_000) }));
+    const stream = new ReadableStream({
+      start(c) {
+        c.enqueue(big);
+        c.close();
+      },
+    });
+    const res = await fetch(`${base}/mcp`, {
+      method: "POST",
+      headers: { "content-type": "application/json", accept: "application/json, text/event-stream" },
+      body: stream,
+      duplex: "half",
+    } as RequestInit);
+    expect(res.status).toBe(413);
+  });
+
+  it("rejects JSON-RPC batches so one request can't fan out", async () => {
+    const res = await post(`${base}/mcp`, [listTools, listTools]);
+    expect(res.status).toBe(400);
+  });
 });
 
 describe("http server - rate limit", () => {

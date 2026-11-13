@@ -10,7 +10,9 @@
 ## Keeping your info out of the public repo
 
 - Put `SLEEPER_LEAGUE_ID`, `SLEEPER_USERNAME` and `MCP_AUTH_TOKEN` in your MCP client config or a
-  local `.env` file. `.env*` (except `.env.example`) is git-ignored.
+  local `.env` file in the directory you start the server from (it's loaded at startup;
+  variables already set in the environment take priority). `.env*` (except `.env.example`) is
+  git-ignored.
 - Tests use synthetic fixtures only — never paste real league data into `test/`.
 - CI runs [gitleaks](https://github.com/gitleaks/gitleaks) on every push / PR.
 - Recommended GitHub settings: enable *Secret scanning* + *Push protection*, *Dependabot alerts*,

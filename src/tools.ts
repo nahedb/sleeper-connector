@@ -70,7 +70,8 @@ export function registerTools(server: McpServer, client: SleeperClient, config: 
   const currentWeek = async (week?: number) => {
     if (week) return week;
     const s: any = await client.nflState();
-    return Math.max(1, Number(s.display_week ?? s.week ?? 1));
+    // `week` is the current NFL week; `display_week` can already point at the next one.
+    return Math.max(1, Number(s.week ?? s.display_week ?? 1));
   };
 
   /** roster_id -> { team name, owner } */
@@ -192,10 +193,10 @@ export function registerTools(server: McpServer, client: SleeperClient, config: 
     {
       title: "Team roster",
       description:
-        "A team's roster with player names: starters, bench, IR and taxi. Identify the team by owner username/display name, team name, or roster_id. Omit `team` for the configured default user's team.",
+        "A team's roster with player names: starters, bench, IR and taxi. Identify the team by owner display name, team name, or roster_id. Omit `team` for the configured default user's team.",
       inputSchema: {
         league_id: leagueIdArg,
-        team: z.string().max(80).optional().describe("Owner username/display name, team name, or roster_id."),
+        team: z.string().max(80).optional().describe("Owner display name, team name, or roster_id."),
       },
       annotations: READ_ONLY,
     },
@@ -210,7 +211,9 @@ export function registerTools(server: McpServer, client: SleeperClient, config: 
         );
       } else {
         const user = await client.user(username());
-        target = [...teams.values()].find((t) => t.owner_id === user.user_id);
+        target = [...teams.values()].find(
+          (t) => t.owner_id === user.user_id || (t.roster.co_owners ?? []).includes(user.user_id),
+        );
       }
       if (!target) {
         throw new UserInputError(
@@ -290,7 +293,13 @@ export function registerTools(server: McpServer, client: SleeperClient, config: 
           adds: moves(t.adds),
           drops: moves(t.drops),
           waiver_bid: t.settings?.waiver_bid ?? null,
-          draft_picks: t.draft_picks ?? [],
+          draft_picks: (t.draft_picks ?? []).map((p: any) => ({
+            season: p.season,
+            round: p.round,
+            original_owner: tname(p.roster_id),
+            from: tname(p.previous_owner_id),
+            to: tname(p.owner_id),
+          })),
         })),
       };
     }),

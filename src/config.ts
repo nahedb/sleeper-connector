@@ -10,6 +10,18 @@ export interface Config {
 export const LEAGUE_ID_RE = /^\d{1,32}$/;
 export const USERNAME_RE = /^[A-Za-z0-9_]{1,40}$/;
 
+/**
+ * Load ./.env into process.env if it exists (Node >= 20.12). Variables already
+ * set in the environment win. A missing file is fine.
+ */
+export function loadDotEnv(path = ".env"): void {
+  try {
+    process.loadEnvFile(path);
+  } catch (e: any) {
+    if (e?.code !== "ENOENT") throw e;
+  }
+}
+
 function clean(v: string | undefined): string | undefined {
   const t = v?.trim();
   return t ? t : undefined;
