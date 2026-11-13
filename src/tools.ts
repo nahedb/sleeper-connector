@@ -57,14 +57,14 @@ export function registerTools(server: McpServer, client: SleeperClient, config: 
     const resolved = id ?? config.defaultLeagueId;
     if (!resolved) {
       throw new UserInputError(
-        "No league_id given and no default configured. Pass league_id, set SLEEPER_LEAGUE_ID, or use sleeper_get_user_leagues to find one.",
+        "No league_id given and no default configured. Ask the user for their Sleeper league ID (in their league URL) or their Sleeper username (then call sleeper_get_user_leagues), and pass league_id. To make it the default, connect with /mcp/league/{league_id} or set SLEEPER_LEAGUE_ID.",
       );
     }
     return resolved;
   };
   const username = (u?: string) => {
     const resolved = u ?? config.defaultUsername;
-    if (!resolved) throw new UserInputError("No username given and SLEEPER_USERNAME is not configured.");
+    if (!resolved) throw new UserInputError("No username given and none configured. Ask the user for their Sleeper username and pass it, or pass `team`. To make it the default, connect with /mcp/league/{league_id}/user/{username} or set SLEEPER_USERNAME.");
     return resolved;
   };
   const currentWeek = async (week?: number) => {

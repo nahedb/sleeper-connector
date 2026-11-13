@@ -18,12 +18,16 @@
 
 ## HTTP server hardening
 
-- Binds to `127.0.0.1` by default; refuses a non-loopback bind without `MCP_AUTH_TOKEN` (≥32 chars).
-- Constant-time bearer token comparison.
-- Rejects unexpected `Origin` headers and, on loopback, non-local `Host` headers (DNS rebinding).
-- 1 MB request body cap, 120 requests/min per IP, stateless sessions.
-- Errors returned to the client never include stack traces.
-- Always run it behind HTTPS when exposed to the internet.
+- **No auth by default** for the remote mode, because everything it exposes is already public on
+  Sleeper and it is read-only. Claude custom connectors use "No sign-in" or OAuth.
+- Optional `MCP_AUTH_TOKEN` (≥32 chars) requires `Authorization: Bearer <token>`, checked in
+  constant time.
+- Always on, with or without auth: per-IP rate limit (`RATE_LIMIT_PER_MIN`, default 60), 1 MB
+  request body cap, stateless sessions, strict validation of league ID / username path segments.
+- Rejects unexpected `Origin` headers and, on loopback binds, non-local `Host` headers
+  (DNS rebinding).
+- Binds to `127.0.0.1` unless `HOST` is set. Never redirects. Errors never include stack traces.
+- Deploy behind HTTPS only. Set `TRUST_PROXY=true` only behind a proxy you control.
 
 ## Reporting a vulnerability
 

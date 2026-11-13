@@ -26,7 +26,7 @@ standings, rosters, matchups, transactions, waiver-wire options, drafts and more
 | `sleeper_get_drafts` | League drafts and draft picks |
 | `sleeper_get_traded_picks` | Future picks that changed hands |
 
-Every tool that takes a `league_id` falls back to `SLEEPER_LEAGUE_ID` if you set it.
+Every tool that takes a `league_id` falls back to the league in the connector URL, then to `SLEEPER_LEAGUE_ID`.
 
 ## Setup
 
@@ -66,19 +66,59 @@ claude mcp add sleeper \
   -- node /absolute/path/to/sleeper-connector/dist/index.js
 ```
 
-### Option B — Remote (Streamable HTTP): custom connector URL
+### Option B — Remote connector in the Claude app (Streamable HTTP, no sign-in)
+
+Host the HTTP server somewhere public (see *Deploying* below), then add it as a custom connector.
+
+**Connector URL format** — pick one:
+
+| URL | Behaviour |
+| --- | --- |
+| `https://your-host/mcp` | Works for any league. Claude asks for your league ID or username in chat. |
+| `https://your-host/mcp/league/<LEAGUE_ID>` | That league is the default. |
+| `https://your-host/mcp/league/<LEAGUE_ID>/user/<USERNAME>` | League and "my team" are both defaults. |
+
+Example: `https://sleeper-mcp.example.com/mcp/league/123456789012345678/user/my_sleeper_name`
+
+League IDs and usernames aren't secret (the same data is public on Sleeper), so it's fine for them
+to be in the URL. One deployment can serve any number of people and leagues.
+
+**Adding it in Claude:**
+
+1. Open **Settings → Connectors** and choose **Add custom connector**.
+2. Give it a name (e.g. "Sleeper") and paste your connector URL from the table above.
+3. Leave the OAuth / advanced fields empty — this connector uses **No sign-in**.
+4. Save, then enable the connector in a chat and ask "show my league standings".
+
+**Deploying:**
 
 ```bash
-cp .env.example .env            # .env is git-ignored
-export MCP_AUTH_TOKEN=$(openssl rand -hex 32)
-HOST=0.0.0.0 PORT=3000 SLEEPER_LEAGUE_ID=... npm run start:http
+npm ci && npm run build
+HOST=0.0.0.0 PORT=3000 TRUST_PROXY=true npm run start:http
 ```
 
-The endpoint is `POST /mcp` (health check: `GET /healthz`). Put it behind HTTPS (a reverse
-proxy, Cloudflare Tunnel, Fly.io, Render, etc.) and send `Authorization: Bearer <MCP_AUTH_TOKEN>`.
+- **HTTPS only.** Put it behind a TLS-terminating host or proxy (Fly.io, Render, Railway,
+  Cloudflare Tunnel, Caddy, nginx...). Claude must reach it over `https://`.
+- **Publicly reachable over IPv4** (the hostname needs an A record, not only AAAA).
+- **No redirects** on the connector URL: use the final `https://` hostname and path exactly
+  (no HTTP→HTTPS hop, no `www` or trailing-slash rewrites). The server itself never redirects.
+- Set `TRUST_PROXY=true` only when behind a proxy that sets `X-Forwarded-For`, so the per-IP rate
+  limit sees real client addresses.
+- Health check: `GET /healthz`. MCP endpoint: `POST` to any of the URLs above.
 
-> **Note:** a client that only supports OAuth for custom connectors can't send a static bearer
-> token. In that case run it locally with Option A, or put it behind an auth proxy that does OAuth.
+**Optional bearer token.** Set `MCP_AUTH_TOKEN` (≥32 chars, e.g. `openssl rand -hex 32`) to require
+`Authorization: Bearer <token>` on every request. This is for clients that can send custom headers
+(Claude Code, scripts). Most Claude app custom connectors can't send a static header, so leave it
+unset for those.
+
+**Local test:**
+
+```bash
+npm run start:http
+curl -s -X POST http://127.0.0.1:3000/mcp/league/<LEAGUE_ID> \
+  -H 'content-type: application/json' -H 'accept: application/json, text/event-stream' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"sleeper_get_standings","arguments":{}}}'
+```
 
 ## Example prompts
 
@@ -89,8 +129,8 @@ proxy, Cloudflare Tunnel, Fly.io, Render, etc.) and send `Authorization: Bearer 
 
 ## Security
 
-See [SECURITY.md](SECURITY.md). In short: never commit `.env`, the HTTP server refuses to bind
-publicly without a strong token, and every ID is validated before it touches a URL.
+See [SECURITY.md](SECURITY.md). In short: it's read-only, never commit `.env`, the HTTP server is
+rate-limited and size-capped even without auth, and every ID is validated before it touches a URL.
 
 ## Development
 
