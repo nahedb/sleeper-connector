@@ -1,6 +1,6 @@
 import type { AddressInfo } from "node:net";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { checkBearer, parseMcpPath, readHttpOptions, startHttpServer, type HttpOptions } from "../src/http.js";
+import { checkBearer, clientIp, parseMcpPath, readHttpOptions, startHttpServer, type HttpOptions } from "../src/http.js";
 import { SleeperClient } from "../src/sleeper.js";
 import { LEAGUE_ID, mockFetch } from "./fixtures.js";
 
@@ -122,6 +122,16 @@ describe("readHttpOptions", () => {
   it("rejects short tokens and bad rate limits", () => {
     expect(() => readHttpOptions({ MCP_AUTH_TOKEN: "short" })).toThrow();
     expect(() => readHttpOptions({ RATE_LIMIT_PER_MIN: "0" })).toThrow();
+  });
+  it("rejects a bad PORT", () => {
+    expect(() => readHttpOptions({ PORT: "abc" })).toThrow();
+    expect(() => readHttpOptions({ PORT: "70000" })).toThrow();
+  });
+  it("clientIp uses the proxy-appended (right-most) X-Forwarded-For entry only when trusted", () => {
+    const req = { headers: { "x-forwarded-for": "6.6.6.6, 203.0.113.9" }, socket: { remoteAddress: "10.0.0.1" } } as any;
+    expect(clientIp(req, true)).toBe("203.0.113.9");
+    expect(clientIp(req, false)).toBe("10.0.0.1");
+    expect(clientIp({ headers: {}, socket: { remoteAddress: "10.0.0.1" } } as any, true)).toBe("10.0.0.1");
   });
   it("checkBearer", () => {
     expect(checkBearer(`Bearer ${TOKEN}`, TOKEN)).toBe(true);

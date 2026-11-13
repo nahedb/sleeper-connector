@@ -102,8 +102,9 @@ HOST=0.0.0.0 PORT=3000 TRUST_PROXY=true npm run start:http
 - **Publicly reachable over IPv4** (the hostname needs an A record, not only AAAA).
 - **No redirects** on the connector URL: use the final `https://` hostname and path exactly
   (no HTTP→HTTPS hop, no `www` or trailing-slash rewrites). The server itself never redirects.
-- Set `TRUST_PROXY=true` only when behind a proxy that sets `X-Forwarded-For`, so the per-IP rate
-  limit sees real client addresses.
+- Set `TRUST_PROXY=true` only when behind a single proxy that appends the client address to
+  `X-Forwarded-For`, so the per-IP rate limit sees real client addresses. The server uses the
+  right-most entry (the one your proxy added), so clients can't spoof their way past the limit.
 - Health check: `GET /healthz`. MCP endpoint: `POST` to any of the URLs above.
 
 **Optional bearer token.** Set `MCP_AUTH_TOKEN` (≥32 chars, e.g. `openssl rand -hex 32`) to require

@@ -36,7 +36,7 @@ export interface HttpOptions {
   port: number;
   authToken?: string;
   allowedOrigins: string[];
-  /** Use the left-most X-Forwarded-For address for rate limiting (only behind a trusted proxy). */
+  /** Use the address the trusted proxy appended to X-Forwarded-For (right-most) for rate limiting. */
   trustProxy: boolean;
   rateLimitPerMin: number;
 }
@@ -44,6 +44,7 @@ export interface HttpOptions {
 export function readHttpOptions(env: NodeJS.ProcessEnv = process.env): HttpOptions {
   const host = env.HOST?.trim() || "127.0.0.1";
   const port = Number(env.PORT ?? 3000);
+  if (!Number.isInteger(port) || port < 0 || port > 65535) throw new Error("PORT must be an integer from 0 to 65535.");
   const authToken = env.MCP_AUTH_TOKEN?.trim() || undefined;
   const allowedOrigins = (env.ALLOWED_ORIGINS ?? "").split(",").map((s) => s.trim()).filter(Boolean);
   if (authToken && authToken.length < 32) throw new Error("MCP_AUTH_TOKEN must be at least 32 characters.");
@@ -103,11 +104,17 @@ async function readJson(req: IncomingMessage): Promise<unknown> {
   }
 }
 
-function clientIp(req: IncomingMessage, trustProxy: boolean): string {
+/**
+ * Client address for rate limiting. Behind a trusted proxy, use the right-most
+ * X-Forwarded-For entry: that is the one the proxy itself appended. Entries to
+ * its left come from the client and can be spoofed to dodge the rate limit.
+ */
+export function clientIp(req: Pick<IncomingMessage, "headers" | "socket">, trustProxy: boolean): string {
   if (trustProxy) {
     const fwd = req.headers["x-forwarded-for"];
-    const first = (Array.isArray(fwd) ? fwd[0] : fwd)?.split(",")[0]?.trim();
-    if (first) return first;
+    const joined = Array.isArray(fwd) ? fwd.join(",") : fwd;
+    const last = joined?.split(",").map((s) => s.trim()).filter(Boolean).pop();
+    if (last) return last;
   }
   return req.socket.remoteAddress ?? "unknown";
 }
@@ -118,7 +125,11 @@ export function startHttpServer(opts: HttpOptions, client = new SleeperClient(),
     const now = Date.now();
     const h = hits.get(ip);
     if (!h || h.reset < now) {
-      if (hits.size > 10_000) hits.clear();
+      if (hits.size > 10_000) {
+        // Drop expired windows first, so a flood of new addresses can't reset everyone's limit.
+        for (const [k, v] of hits) if (v.reset < now) hits.delete(k);
+        if (hits.size > 10_000) hits.delete(hits.keys().next().value!);
+      }
       hits.set(ip, { count: 1, reset: now + 60_000 });
       return false;
     }
